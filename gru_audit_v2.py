@@ -373,6 +373,73 @@ class MeterGraphs:
         fig.autofmt_xdate()
         plt.tight_layout()
         return fig
+    
+    def plot_daily_average(self):
+        colors = get_theme_colors()
+        setup_chart_style()
+        
+        s = self.feats["daily_avg_series"]
+        if s is None:
+            return None
+        
+        s = s[s > 0]
+        if s.empty:
+            return None
+        
+        fig, ax = plt.subplots(figsize=(12, 4))
+        ax.plot(s.index, s.values, color=colors["accent"], linewidth=2, marker="o", markersize=5, label="Daily Avg")
+        self._add_markers(ax)
+        ax.set_title(self.prefix + " - Average Daily Usage")
+        ax.set_ylabel(self.feats["unit"] + "/day")
+        ax.legend()
+        fig.autofmt_xdate()
+        plt.tight_layout()
+        return fig
+
+
+def plot_meter_daily_avg_temp_overlay(df_merged, title, unit):
+    colors = get_theme_colors()
+    setup_chart_style()
+    
+    fig, ax1 = plt.subplots(figsize=(12, 5))
+    
+    # Color bars by temperature
+    bar_colors = []
+    for t in df_merged["temp_avg"]:
+        if t >= 80:
+            bar_colors.append("#e57373")
+        elif t <= 55:
+            bar_colors.append("#64b5f6")
+        else:
+            bar_colors.append("#81c784")
+    
+    # Use avg_daily if available, otherwise calculate from consumption/days
+    if "avg_daily" in df_merged.columns:
+        y_values = df_merged["avg_daily"]
+    else:
+        y_values = df_merged["consumption"] / df_merged["days"]
+    
+    ax1.bar(df_merged["mr_date"], y_values, color=bar_colors, alpha=0.7, width=15)
+    ax1.set_ylabel(unit + "/day", color=colors["text"])
+    ax1.set_xlabel("")
+    
+    ax2 = ax1.twinx()
+    ax2.plot(df_merged["mr_date"], df_merged["temp_avg"], color="#ff9800", linewidth=2.5, marker="o", markersize=4)
+    ax2.axhline(COMFORT_BASELINE, color="#ff9800", linestyle="--", linewidth=1, alpha=0.5)
+    ax2.set_ylabel("Temperature (F)", color="#ff9800")
+    
+    legend_elements = [
+        mpatches.Patch(color="#e57373", alpha=0.7, label="Hot (>80F)"),
+        mpatches.Patch(color="#81c784", alpha=0.7, label="Mild (55-80F)"),
+        mpatches.Patch(color="#64b5f6", alpha=0.7, label="Cold (<55F)"),
+        plt.Line2D([0], [0], color="#ff9800", linewidth=2.5, marker="o", label="Temperature"),
+    ]
+    ax1.legend(handles=legend_elements, loc="upper left", fontsize=8)
+    
+    ax1.set_title(title, fontweight="bold")
+    fig.autofmt_xdate()
+    plt.tight_layout()
+    return fig
 
 
 # AMI Loader - Flexible multi-format
@@ -1029,7 +1096,8 @@ def main():
     
     apply_theme()
     
-    st.title("Utility Consumption Analyzer")
+    st.title("Energy Audit Analyzer")
+    st.markdown("*Professional energy consumption analysis for auditors*")
     st.markdown("---")
     
     if meter_file is None and ami_file is None:
@@ -1150,12 +1218,24 @@ def main():
                     data = meter_data[util]
                     merged = merge_meter_temp(data["df"], df_temp)
                     if not merged.empty:
-                        fig = plot_temp_overlay_meter(merged, util + " Consumption vs Temperature", data["features"]["unit"])
+                        # Daily average with temperature overlay
+                        fig = plot_meter_daily_avg_temp_overlay(merged, util + " Daily Avg Usage vs Temperature", data["features"]["unit"])
                         st.pyplot(fig)
                         all_charts.append(fig)
                         
-                        r, corr_type = compute_temp_correlation(merged, "consumption", utility_type=util)
+                        # Calculate correlation using daily average
+                        if "avg_daily" in merged.columns:
+                            r, corr_type = compute_temp_correlation(merged, "avg_daily", utility_type=util)
+                        else:
+                            merged["calc_daily"] = merged["consumption"] / merged["days"]
+                            r, corr_type = compute_temp_correlation(merged, "calc_daily", utility_type=util)
                         temp_correlations[util] = (r, corr_type)
+                        
+                        # Scatter plot
+                        value_col = "avg_daily" if "avg_daily" in merged.columns else "calc_daily"
+                        fig2, r2 = plot_temp_scatter(merged, value_col, data["features"]["unit"] + "/day", util + " Temperature Correlation", util)
+                        st.pyplot(fig2)
+                        all_charts.append(fig2)
                 
                 st.markdown("---")
         
@@ -1186,7 +1266,7 @@ def main():
             elif len(all_utilities) >= 2:
                 st.info("Cross-utility correlation requires overlapping date ranges between utilities.")
         
-        st.subheader("Recommendations")
+        st.subheader("Auditor Recommendations")
         
         advice_list = generate_auditor_advice(temp_correlations, cross_corr_pairs, utility_features)
         
@@ -1277,6 +1357,13 @@ def main():
                 
                 graphs = MeterGraphs(feats, title_prefix=util)
                 
+                # Daily Average chart
+                fig = graphs.plot_daily_average()
+                if fig is not None:
+                    st.pyplot(fig)
+                    all_charts.append(fig)
+                
+                # Consumption chart
                 fig = graphs.plot_consumption()
                 st.pyplot(fig)
                 all_charts.append(fig)
