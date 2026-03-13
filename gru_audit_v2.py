@@ -1,3 +1,21 @@
+“””
+Energy Audit Analyzer v3.0
+Professional energy consumption analysis tool for auditors.
+
+Features:
+
+- Multi-utility support (Electric, Water, Gas) with dynamic tabs
+- Temperature correlation analysis
+- Cross-utility correlation with scatter plots
+- Auditor advice based on patterns
+- Dark/Light mode toggle
+- Enhanced responsive design
+- Flexible AMI format detection
+- PDF report export
+
+Author: Energy Audit Tools
+“””
+
 import streamlit as st
 import pandas as pd
 import numpy as np
