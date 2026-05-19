@@ -225,8 +225,11 @@ class MeterLoader:
         df["mr_date"] = pd.to_datetime(df["mr_date"], errors="coerce")
         
         if "consumption" in df.columns:
-            if df["consumption"].dtype == object:
-                df["consumption"] = df["consumption"].astype(str).str.replace(",", "")
+            # Handle comma-formatted numbers (e.g., "1,430")
+            # Check for any string-like dtype (object, string, str)
+            dtype_str = str(df["consumption"].dtype).lower()
+            if df["consumption"].dtype == object or "str" in dtype_str:
+                df["consumption"] = df["consumption"].str.replace(",", "", regex=False)
             df["consumption"] = pd.to_numeric(df["consumption"], errors="coerce")
         
         for col in ["days", "avg_daily"]:
