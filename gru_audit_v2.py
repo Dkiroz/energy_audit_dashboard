@@ -492,7 +492,8 @@ class AMILoader:
             return None
         
         ts_str = str(ts_str).strip()
-        for tz in [" EST", " EDT", " CST", " CDT", " PST", " PDT"]:
+        # Remove timezone indicators (including combined EST/EDT format)
+        for tz in [" EST/EDT", " CST/CDT", " PST/PDT", " EST", " EDT", " CST", " CDT", " PST", " PDT"]:
             ts_str = ts_str.replace(tz, "")
         
         if " - " in ts_str:
@@ -629,35 +630,151 @@ COMFORT_BASELINE = 65
 
 @st.cache_data(ttl=3600)
 def get_temperature_data(start_date, end_date):
-    start = pd.to_datetime(start_date).strftime("%Y-%m-%d")
-    end = pd.to_datetime(end_date).strftime("%Y-%m-%d")
+    start_dt = pd.to_datetime(start_date)
+    end_dt = pd.to_datetime(end_date)
+    today = pd.Timestamp.now().normalize()
     
-    url = "https://archive-api.open-meteo.com/v1/archive"
-    params = {
-        "latitude": GAINESVILLE_LAT,
-        "longitude": GAINESVILLE_LON,
-        "start_date": start,
-        "end_date": end,
-        "daily": ["temperature_2m_max", "temperature_2m_min"],
-        "temperature_unit": "fahrenheit",
-        "timezone": "America/New_York",
-    }
+    # Cap end date to yesterday (archive may not have today)
+    if end_dt >= today:
+        end_dt = today - pd.Timedelta(days=1)
     
-    try:
-        resp = requests.get(url, params=params, timeout=15)
-        resp.raise_for_status()
-        data = resp.json()["daily"]
-        
-        df_temp = pd.DataFrame({
-            "date": pd.to_datetime(data["time"]),
-            "temp_max": data["temperature_2m_max"],
-            "temp_min": data["temperature_2m_min"],
-        })
-        df_temp["temp_avg"] = (df_temp["temp_max"] + df_temp["temp_min"]) / 2
-        df_temp = df_temp.set_index("date")
-        return df_temp
-    except:
+    # Archive API cutoff is about 5 days ago
+    archive_cutoff = today - pd.Timedelta(days=5)
+    
+    all_data = []
+    
+    # Get archive data for older dates
+    if start_dt < archive_cutoff:
+        archive_end = min(end_dt, archive_cutoff - pd.Timedelta(days=1))
+        url = "https://archive-api.open-meteo.com/v1/archive"
+        params = {
+            "latitude": GAINESVILLE_LAT,
+            "longitude": GAINESVILLE_LON,
+            "start_date": start_dt.strftime("%Y-%m-%d"),
+            "end_date": archive_end.strftime("%Y-%m-%d"),
+            "daily": ["temperature_2m_max", "temperature_2m_min"],
+            "temperature_unit": "fahrenheit",
+            "timezone": "America/New_York",
+        }
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()["daily"]
+            df_arch = pd.DataFrame({
+                "date": pd.to_datetime(data["time"]),
+                "temp_max": data["temperature_2m_max"],
+                "temp_min": data["temperature_2m_min"],
+            })
+            all_data.append(df_arch)
+        except:
+            pass
+    
+    # Get recent data from forecast API (past_days parameter)
+    if end_dt >= archive_cutoff:
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": GAINESVILLE_LAT,
+            "longitude": GAINESVILLE_LON,
+            "daily": ["temperature_2m_max", "temperature_2m_min"],
+            "temperature_unit": "fahrenheit",
+            "timezone": "America/New_York",
+            "past_days": 7,
+            "forecast_days": 1,
+        }
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()["daily"]
+            df_recent = pd.DataFrame({
+                "date": pd.to_datetime(data["time"]),
+                "temp_max": data["temperature_2m_max"],
+                "temp_min": data["temperature_2m_min"],
+            })
+            # Filter to requested range
+            df_recent = df_recent[(df_recent["date"] >= start_dt) & (df_recent["date"] <= end_dt)]
+            all_data.append(df_recent)
+        except:
+            pass
+    
+    if not all_data:
         return None
+    
+    df_temp = pd.concat(all_data, ignore_index=True).drop_duplicates(subset=["date"])
+    df_temp["temp_avg"] = (df_temp["temp_max"] + df_temp["temp_min"]) / 2
+    df_temp = df_temp.sort_values("date").set_index("date")
+    return df_temp
+
+
+@st.cache_data(ttl=3600)
+def get_hourly_temperature_data(start_date, end_date):
+    start_dt = pd.to_datetime(start_date)
+    end_dt = pd.to_datetime(end_date)
+    today = pd.Timestamp.now().normalize()
+    
+    # Cap end date to now
+    if end_dt > today:
+        end_dt = today
+    
+    archive_cutoff = today - pd.Timedelta(days=5)
+    
+    all_data = []
+    
+    # Archive data for older dates
+    if start_dt < archive_cutoff:
+        archive_end = min(end_dt, archive_cutoff - pd.Timedelta(days=1))
+        url = "https://archive-api.open-meteo.com/v1/archive"
+        params = {
+            "latitude": GAINESVILLE_LAT,
+            "longitude": GAINESVILLE_LON,
+            "start_date": start_dt.strftime("%Y-%m-%d"),
+            "end_date": archive_end.strftime("%Y-%m-%d"),
+            "hourly": ["temperature_2m"],
+            "temperature_unit": "fahrenheit",
+            "timezone": "America/New_York",
+        }
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()["hourly"]
+            df_arch = pd.DataFrame({
+                "timestamp": pd.to_datetime(data["time"]),
+                "temp": data["temperature_2m"],
+            })
+            all_data.append(df_arch)
+        except:
+            pass
+    
+    # Recent data from forecast API
+    if end_dt >= archive_cutoff:
+        url = "https://api.open-meteo.com/v1/forecast"
+        params = {
+            "latitude": GAINESVILLE_LAT,
+            "longitude": GAINESVILLE_LON,
+            "hourly": ["temperature_2m"],
+            "temperature_unit": "fahrenheit",
+            "timezone": "America/New_York",
+            "past_days": 7,
+            "forecast_days": 1,
+        }
+        try:
+            resp = requests.get(url, params=params, timeout=15)
+            resp.raise_for_status()
+            data = resp.json()["hourly"]
+            df_recent = pd.DataFrame({
+                "timestamp": pd.to_datetime(data["time"]),
+                "temp": data["temperature_2m"],
+            })
+            df_recent = df_recent[(df_recent["timestamp"] >= start_dt) & (df_recent["timestamp"] <= end_dt)]
+            all_data.append(df_recent)
+        except:
+            pass
+    
+    if not all_data:
+        return None
+    
+    df_temp = pd.concat(all_data, ignore_index=True).drop_duplicates(subset=["timestamp"])
+    df_temp = df_temp.sort_values("timestamp").set_index("timestamp")
+    return df_temp
 
 
 def merge_meter_temp(df_div, df_temp):
@@ -686,6 +803,25 @@ def merge_ami_temp(daily_series, df_temp):
     
     merged = df.merge(df_temp_reset[["date", "temp_avg"]], on="date", how="inner")
     return merged.dropna()
+
+
+def merge_ami_hourly_temp(ami_df, df_temp_hourly):
+    df = ami_df.copy()
+    df["hour"] = df["timestamp"].dt.floor("H")
+    
+    df_temp = df_temp_hourly.reset_index()
+    df_temp.columns = ["hour", "temp"]
+    
+    merged = df.merge(df_temp, on="hour", how="inner")
+    return merged.dropna()
+
+
+def aggregate_ami_hourly(ami_df):
+    df = ami_df.copy()
+    df["hour"] = df["timestamp"].dt.floor("H")
+    hourly = df.groupby("hour")["value"].sum().reset_index()
+    hourly.columns = ["timestamp", "value"]
+    return hourly
 
 
 # Temperature Charts
@@ -718,6 +854,53 @@ def plot_temp_overlay_ami(df_merged, title, unit):
         mpatches.Patch(color="#81c784", alpha=0.7, label="Mild (55-80F)"),
         mpatches.Patch(color="#64b5f6", alpha=0.7, label="Cold (<55F)"),
         plt.Line2D([0], [0], color="#ff9800", linewidth=2.5, marker="o", label="Temperature"),
+    ]
+    ax1.legend(handles=legend_elements, loc="upper left", fontsize=8)
+    
+    ax1.set_title(title, fontweight="bold")
+    fig.autofmt_xdate()
+    plt.tight_layout()
+    return fig
+
+
+def plot_temp_overlay_ami_hourly(hourly_df, df_temp_hourly, title, unit):
+    colors = get_theme_colors()
+    setup_chart_style()
+    
+    merged = merge_ami_hourly_temp(hourly_df, df_temp_hourly)
+    if merged.empty:
+        return None
+    
+    # Aggregate to hourly if needed
+    merged["hour"] = merged["timestamp"].dt.floor("H")
+    hourly = merged.groupby("hour").agg({"value": "sum", "temp": "mean"}).reset_index()
+    
+    fig, ax1 = plt.subplots(figsize=(14, 5))
+    
+    # Color by temperature
+    bar_colors = []
+    for t in hourly["temp"]:
+        if t >= 80:
+            bar_colors.append("#e57373")
+        elif t <= 55:
+            bar_colors.append("#64b5f6")
+        else:
+            bar_colors.append("#81c784")
+    
+    ax1.bar(hourly["hour"], hourly["value"], color=bar_colors, alpha=0.7, width=0.03)
+    ax1.set_ylabel("Hourly " + unit, color=colors["text"])
+    ax1.set_xlabel("")
+    
+    ax2 = ax1.twinx()
+    ax2.plot(hourly["hour"], hourly["temp"], color="#ff9800", linewidth=1.5, alpha=0.8)
+    ax2.axhline(COMFORT_BASELINE, color="#ff9800", linestyle="--", linewidth=1, alpha=0.5)
+    ax2.set_ylabel("Temperature (F)", color="#ff9800")
+    
+    legend_elements = [
+        mpatches.Patch(color="#e57373", alpha=0.7, label="Hot (>80F)"),
+        mpatches.Patch(color="#81c784", alpha=0.7, label="Mild (55-80F)"),
+        mpatches.Patch(color="#64b5f6", alpha=0.7, label="Cold (<55F)"),
+        plt.Line2D([0], [0], color="#ff9800", linewidth=1.5, label="Temperature"),
     ]
     ax1.legend(handles=legend_elements, loc="upper left", fontsize=8)
     
@@ -1168,12 +1351,20 @@ def main():
         dates = data["df"]["timestamp"]
         date_ranges.extend([dates.min(), dates.max()])
     
+    df_temp = None
+    df_temp_hourly = None
     if date_ranges:
         with st.spinner("Fetching temperature data..."):
             df_temp = get_temperature_data(
                 min(date_ranges) - pd.Timedelta(days=35),
                 max(date_ranges)
             )
+            # Fetch hourly temp for AMI data
+            if ami_data:
+                df_temp_hourly = get_hourly_temperature_data(
+                    min(date_ranges),
+                    max(date_ranges)
+                )
     
     tab_names = ["Overview"] + all_utilities
     if ami_data:
@@ -1192,8 +1383,11 @@ def main():
             for util in all_utilities:
                 if util in ami_data:
                     data = ami_data[util]
+                    
+                    # Daily temperature overlay
                     merged = merge_ami_temp(data["features"]["daily_series"], df_temp)
                     if not merged.empty:
+                        st.markdown("**" + util + " - Daily**")
                         fig = plot_temp_overlay_ami(merged, util + " Daily Usage vs Temperature", data["unit"])
                         st.pyplot(fig)
                         temp_overlay_charts.append(fig)
@@ -1203,6 +1397,14 @@ def main():
                         
                         fig2, r2 = plot_temp_scatter(merged, "value", data["unit"], util + " Temperature Correlation", util)
                         st.pyplot(fig2)
+                    
+                    # Hourly temperature overlay
+                    if df_temp_hourly is not None:
+                        st.markdown("**" + util + " - Hourly**")
+                        fig_hourly = plot_temp_overlay_ami_hourly(data["df"], df_temp_hourly, util + " Hourly Usage vs Temperature", data["unit"])
+                        if fig_hourly is not None:
+                            st.pyplot(fig_hourly)
+                            temp_overlay_charts.append(fig_hourly)
                 
                 elif util in meter_data:
                     data = meter_data[util]
