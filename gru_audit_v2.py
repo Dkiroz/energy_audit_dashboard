@@ -807,7 +807,7 @@ def merge_ami_temp(daily_series, df_temp):
 
 def merge_ami_hourly_temp(ami_df, df_temp_hourly):
     df = ami_df.copy()
-    df["hour"] = df["timestamp"].dt.floor("H")
+    df["hour"] = df["timestamp"].dt.floor("h")
     
     df_temp = df_temp_hourly.reset_index()
     df_temp.columns = ["hour", "temp"]
@@ -818,7 +818,7 @@ def merge_ami_hourly_temp(ami_df, df_temp_hourly):
 
 def aggregate_ami_hourly(ami_df):
     df = ami_df.copy()
-    df["hour"] = df["timestamp"].dt.floor("H")
+    df["hour"] = df["timestamp"].dt.floor("h")
     hourly = df.groupby("hour")["value"].sum().reset_index()
     hourly.columns = ["timestamp", "value"]
     return hourly
@@ -872,7 +872,7 @@ def plot_temp_overlay_ami_hourly(hourly_df, df_temp_hourly, title, unit):
         return None
     
     # Aggregate to hourly if needed
-    merged["hour"] = merged["timestamp"].dt.floor("H")
+    merged["hour"] = merged["timestamp"].dt.floor("h")
     hourly = merged.groupby("hour").agg({"value": "sum", "temp": "mean"}).reset_index()
     
     fig, ax1 = plt.subplots(figsize=(14, 5))
