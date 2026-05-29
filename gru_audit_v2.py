@@ -1,6 +1,4 @@
-# Energy Audit Analyzer v3.0
-# Professional energy consumption analysis tool for auditors
-
+# energy_audit_dashboard v2.0
 import streamlit as st
 import pandas as pd
 import numpy as np
