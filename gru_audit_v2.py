@@ -1271,7 +1271,7 @@ def main():
     
     apply_theme()
     
-    st.title("Utility Consumption Analysis")
+    st.title("Energy Audit Dashboard")
     st.markdown("---")
     
     if meter_file is None and ami_file is None:
