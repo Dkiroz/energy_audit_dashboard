@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore")
 
 # Page config
 st.set_page_config(
-    page_title="Utility Consumption Analysis",
+    page_title="Energy Audit Dashboard",
     page_icon="E",
     layout="wide",
     initial_sidebar_state="expanded"
