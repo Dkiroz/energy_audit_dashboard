@@ -15,18 +15,6 @@ It handles Electric, Water, and Gas in any combination. Tabs appear dynamically 
 ## How to Access
 
 The app runs in a browser. No installation needed. Open the Streamlit link and upload your files from the sidebar.
-
-To run it locally:
-
-```bash
-git clone https://github.com/yourusername/utility-consumption-analysis.git
-cd utility-consumption-analysis
-pip install -r requirements.txt
-streamlit run gru_audit_v2.py
-```
-
-Opens at `http://localhost:8501`.
-
 ---
 
 ## What to Upload
