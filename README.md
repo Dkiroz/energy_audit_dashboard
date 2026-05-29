@@ -1,227 +1,119 @@
-# Energy Audit Analyzer v3.0
+# Utility Consumption Analysis
 
-An energy consumption analysis tool for energy auditors. Analyzes meter billing data and AMI interval data to identify patterns, correlations, and actionable recommendations.
+A web app that analyzes utility billing and interval data to surface consumption patterns, flag anomalies, and generate actionable recommendations. Built for internal use by efficiency and account teams.
 
-## Features
+---
 
-### Multi-Utility Support
-- **Electric** (kWh)
-- **Water** (Gal, kGal)
-- **Gas** (CCF, Therms)
-- Dynamic tabs - only shows utilities present in your data
-- Handles any combination: single utility, two utilities, or all three
+## What It Does
 
-### Temperature Analysis
-- Automatic temperature data fetch (Gainesville, FL - Open-Meteo API)
-- Temperature overlay charts with color-coded bars (Hot/Mild/Cold)
-- Correlation scatter plots with trend lines
-- V-shape correlation for Electric/Water (deviation from 65F baseline)
-- Linear correlation for Gas (negative = heating-driven)
+Upload a customer's billing file, AMI interval file, or both. The app automatically pulls local temperature data, overlays it on consumption charts, checks for cross-utility patterns, and writes out plain-language findings. A PDF report can be exported for the customer at the end.
 
-### Cross-Utility Correlation
-Works with both AMI and meter data:
+It handles Electric, Water, and Gas in any combination. Tabs appear dynamically based on what data you upload -- if there is no gas data, there is no gas tab.
 
-| Correlation | What It Detects |
-|-------------|-----------------|
-| Water-Electric > 0.7 | Possible electric water heater issue or hot water leak |
-| Water-Electric > 0.5 | Electric water heater or pool pump present |
-| Water-Gas > 0.7 | Possible natural gas water heater issue or hot water leak |
-| Water-Gas > 0.5 | Natural gas water heater detected |
-| Electric-Gas < -0.5 | Seasonal HVAC switching (furnace/AC) - normal pattern |
-| Electric-Gas > 0.5 | Unusual - both increasing together, check equipment |
+---
 
-### Auditor Recommendations
-Automatic advice generation based on:
-- Temperature correlations (HVAC dependency)
-- Cross-utility correlations (water heater issues, leaks)
-- Load factor analysis (peaky demand)
-- Base load detection (always-on equipment)
-- Anomaly detection (unusual billing periods)
+## How to Access
 
-### Additional Features
-- **Dark/Light Mode** - Toggle in sidebar
-- **Responsive Design** - Works on desktop and mobile
-- **PDF Export** - Generate reports with all charts and recommendations
-- **Flexible AMI Formats** - Auto-detects multiple file formats
+The app runs in a browser. No installation needed. Open the Streamlit link and upload your files from the sidebar.
 
-## Installation
-
-### Local Installation
+To run it locally:
 
 ```bash
-# Clone or download the repository
-git clone https://github.com/yourusername/energy-audit-analyzer.git
-cd energy-audit-analyzer
-
-# Install dependencies
+git clone https://github.com/yourusername/utility-consumption-analysis.git
+cd utility-consumption-analysis
 pip install -r requirements.txt
-
-# Run the app
-streamlit run streamlit_energy_audit.py
+streamlit run gru_audit_v2.py
 ```
 
-Opens at `http://localhost:8501`
+Opens at `http://localhost:8501`.
 
-## File Formats
+---
 
-### Meter Files (Excel)
+## What to Upload
 
-Expected structure:
-- **Master Sheet** tab with customer info (optional)
-- **Consumption** tab with billing data
+### Meter Billing File (Excel)
 
-Required columns:
+Needs a sheet with "Consumption" in its name. An optional "Master Sheet" tab will pull in customer name, account number, address, and survey date automatically.
+
+Required columns in the Consumption sheet:
+
 | Column | Description |
-|--------|-------------|
+|---|---|
 | Division | Electricity, Water, or Gas |
 | MR Date | Meter read date |
 | Days | Days in billing period |
 | Consumption | Usage for period |
-| Avg. | Daily average (optional) |
+| Avg. | Daily average (optional but recommended) |
 | MR Reason | Read reason code (optional) |
 | MR Unit | Unit of measure |
 
-MR Reason codes handled:
-- 3 = Non-read (filtered out)
-- 6 = Move-In (shown as vertical line)
-- 21/22 = Meter Change (shown as shaded band)
+Read reason codes the app handles:
 
-### AMI Files (Excel)
+- 3: Non-read, filtered out
+- 6: Move-In, shown as a dashed line on charts
+- 21, 22: Meter Change, shown as a shaded band
 
-Supports multiple formats:
+### AMI Interval File (Excel)
 
-**Format A** - Combined datetime with " - " separator
-```
-Feb 25, 2026 - 12:00 am | 1,862.000 Wh Del
-```
+Four timestamp formats are supported. The app detects the format automatically. Timezone suffixes like EST and EDT are stripped. Multi-utility files can use separate sheets named ELECTRIC, WATER, or GAS.
 
-**Format B** - Combined datetime MM/DD/YYYY
-```
-01/12/2026 00:15 EST | 2.5
-```
+---
 
-**Format C** - Separate Date and Time columns
-```
-Date       | Time     | Gal
-2/15/2026  | 1:00 am  | 25.4
-```
+## What You Get
 
-**Format D** - Standard datetime
-```
-timestamp           | kwh
-2026-01-15 00:00:00 | 1.5
-```
+### Overview Tab
 
-**Multi-Utility AMI Files:**
-- Multiple sheets supported (ELECTRIC, WATER, GAS)
-- Utility type detected from sheet name
-- Units auto-detected from values (Wh, kWh, Gal, CCF)
+This is the main summary. It shows:
 
-## Usage
-
-### 1. Upload Data
-
-In the sidebar:
-- **Meter Reading File** - Excel file with billing history
-- **AMI Interval File** - Excel file with 15-min or hourly data
-
-You can upload one or both file types.
-
-### 2. Review Overview Tab
-
-The Overview tab shows:
-- Temperature overlay charts for all utilities
-- Temperature correlation scatter plots
+- Temperature overlay charts for each utility (color-coded bars for hot, mild, and cold periods)
+- Correlation scatter plots showing how closely usage tracks temperature
 - Cross-utility correlation matrix and scatter plots
-- Auditor recommendations
+- Auto-generated recommendations based on all of the above
 
-### 3. Explore Utility Tabs
+### Utility Tabs
 
-Each utility gets its own tab with:
-- Key metrics (total, daily avg, peak, anomalies)
-- Consumption charts with Move-In and Meter Change markers
-- Rolling average trend lines
-- Anomaly detection
+Each utility gets its own tab.
 
-**AMI data additionally shows:**
-- Load shape (full interval data)
-- Daily totals bar chart
-- Hourly profile by time of day
-- Load factor
+Meter data shows a daily average chart, a billing period consumption chart, a rolling average trend, and anomaly detection.
 
-### 4. Advanced Analysis (AMI only)
+AMI data additionally shows the full load shape, daily totals, an hourly usage profile, and load factor.
 
-Fractal/complexity analysis using Hurst Exponent:
-- H < 0.45: Anti-persistent (variable behavior)
-- H ~ 0.5: Random (no pattern)
-- H > 0.55: Persistent (consistent patterns)
+### Advanced Analysis Tab (AMI only)
 
-### 5. Export Report
+Runs a fractal complexity analysis using the Hurst Exponent. Helps characterize whether a customer's usage is consistent and predictable or highly variable.
 
-Generate PDF report including:
-- Cover page with customer info
-- Auditor recommendations
-- All charts from analysis
+### Export Tab
 
-## Auditor Advice Reference
+Generates a customer-facing PDF with a cover page, consumption charts, and temperature overlays. One click to download.
 
-### Temperature Correlations
+---
 
-| Pattern | Utility | Advice |
-|---------|---------|--------|
-| r > 0.6 | Electric/Water | Strong HVAC dependency - focus on envelope, AC efficiency |
-| r > 0.3 | Electric/Water | Moderate HVAC sensitivity - check appliances too |
-| r < 0.3 | Electric/Water | Non-HVAC loads dominate - investigate appliances, lighting |
-| r < -0.5 | Gas | Natural gas furnace is primary heat source |
-| r < -0.2 | Gas | Some natural gas furnace usage |
-| r > -0.2 | Gas | Gas not heating-driven - check water heater, stove |
+## How Recommendations Work
 
-### Cross-Utility Correlations
+The app generates recommendations in four areas:
 
-| Pattern | Advice |
-|---------|--------|
-| Water-Electric > 0.7 | Check for electric water heater issues or hot water leaks |
-| Water-Gas > 0.7 | Check for natural gas water heater issues or hot water leaks |
-| Electric-Gas < -0.5 | Normal seasonal switching between furnace and AC |
-| Electric-Gas > 0.5 | Unusual - investigate equipment issues |
+**Temperature correlation** -- how strongly usage tracks outdoor temperature. A high correlation for electric or water points to HVAC dependence. A strong negative correlation for gas indicates furnace-driven heating.
 
-### Load Characteristics
+**Cross-utility correlation** -- relationships between utilities. A high Water-Electric correlation may indicate an electric water heater issue or a hot water leak. A strong inverse Electric-Gas correlation is typical seasonal HVAC switching and is considered normal.
 
-| Pattern | Advice |
-|---------|--------|
-| Load factor < 30% | Peaky demand - consider load shifting, TOU rates |
-| Base load > 1 kW | High always-on usage - check phantom loads, old equipment |
-| Anomalies detected | Review flagged periods for equipment issues |
+**Load factor** -- applies to AMI data. A low load factor means demand is peaky, which can point toward load-shifting opportunities.
 
-## Requirements
+**Base load** -- applies to AMI electric data. A high base load (above 1 kW) suggests significant always-on equipment.
 
-```
-numpy>=1.21.0
-pandas>=1.3.0
-matplotlib>=3.4.0
-scikit-learn>=0.24.0
-scipy>=1.7.0
-requests>=2.25.0
-openpyxl>=3.0.0
-streamlit>=1.28.0
-```
+---
 
 ## Troubleshooting
 
-### "No consumption sheet found"
-- Ensure your meter file has a sheet with "Consumption" in the name
+**"No consumption sheet found"** -- The meter file needs a sheet with "Consumption" in its name.
 
-### "Could not identify columns"
-- Check that your AMI file has recognizable date/time and value columns
-- Supported column names: Date, Time, DateTime, kWh, Value, Gal, CCF
+**Temperature data not loading** -- Requires internet access. Data is cached for one hour. Charts will still render without the overlay if the API is unavailable.
 
-### Temperature data not loading
-- Requires internet connection
-- Open-Meteo API may be temporarily unavailable
-- Data cached for 1 hour
+**Cross-utility correlation not showing** -- Needs at least two utilities with overlapping date ranges and five or more shared data points.
 
-### Cross-utility correlation not showing
-- Need at least 2 utilities with overlapping date ranges
-- Need at least 5 overlapping data points
+**Recent months not graphing** -- Known issue under active development.
 
+---
 
+## Notes for Developers
+
+All Python source must use ASCII straight quotes only. Smart or curly quotes cause silent compilation errors on Streamlit Cloud. The runtime is pinned to Python 3.11 in `runtime.txt`. The main file is `gru_audit_v2.py`.
