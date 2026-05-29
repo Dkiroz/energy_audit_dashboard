@@ -110,10 +110,7 @@ The app generates recommendations in four areas:
 
 **Cross-utility correlation not showing** -- Needs at least two utilities with overlapping date ranges and five or more shared data points.
 
-**Recent months not graphing** -- Known issue under active development.
+**Recent months not graphing** -- Known issue.
 
----
 
-## Notes for Developers
-
-All Python source must use ASCII straight quotes only. Smart or curly quotes cause silent compilation errors on Streamlit Cloud. The runtime is pinned to Python 3.11 in `runtime.txt`. The main file is `gru_audit_v2.py`.
+ The runtime is pinned to Python 3.11 in `runtime.txt`. The main file is `gru_audit_v2.py`.
