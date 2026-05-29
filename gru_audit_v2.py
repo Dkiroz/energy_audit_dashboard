@@ -1207,48 +1207,86 @@ class FractalAnalyzer:
         return slope, r_value ** 2
 
 
-# PDF Report - Simple customer-facing export
-def generate_pdf_report(customer_info, consumption_charts, temp_charts):
+# PDF Report - Generates charts fresh from data (independent of tab rendering)
+def generate_pdf_report(customer_info, meter_data, ami_data, df_temp, df_temp_hourly):
     buffer = io.BytesIO()
-    
-    plt.rcParams.update({
+
+    pdf_rc = {
         "figure.facecolor": "white",
         "axes.facecolor": "white",
-        "text.color": "black",
+        "axes.edgecolor": "#cccccc",
         "axes.labelcolor": "black",
+        "text.color": "black",
         "xtick.color": "black",
         "ytick.color": "black",
-    })
-    
+        "grid.color": "#eeeeee",
+        "grid.alpha": 0.5,
+        "axes.spines.top": False,
+        "axes.spines.right": False,
+        "font.size": 10,
+        "axes.titlesize": 12,
+        "axes.titleweight": "bold",
+    }
+    plt.rcParams.update(pdf_rc)
+
     with PdfPages(buffer) as pdf:
-        # Title page with customer info
+        # Cover page
         fig, ax = plt.subplots(figsize=(11, 8.5))
         ax.axis("off")
-        
-        ax.text(0.5, 0.75, "Utility Consumption Report", fontsize=28, fontweight="bold", ha="center", color="#1e3a5f")
-        
+        ax.text(0.5, 0.75, "Energy Audit Dashboard", fontsize=28, fontweight="bold", ha="center", color="#1e3a5f")
         if customer_info:
             ax.text(0.5, 0.55, str(customer_info.get("customer_name", "")), fontsize=18, ha="center")
             ax.text(0.5, 0.48, str(customer_info.get("address", "")), fontsize=14, ha="center")
             ax.text(0.5, 0.42, "Account: " + str(customer_info.get("account", "")), fontsize=12, ha="center", color="gray")
-        
         ax.text(0.5, 0.20, datetime.now().strftime("%B %d, %Y"), fontsize=12, ha="center", color="gray")
-        
         pdf.savefig(fig, bbox_inches="tight")
         plt.close(fig)
-        
-        # Consumption charts
-        for chart in consumption_charts:
-            if chart is not None:
-                pdf.savefig(chart, bbox_inches="tight")
-                plt.close(chart)
-        
-        # Temperature overlay charts
-        for chart in temp_charts:
-            if chart is not None:
-                pdf.savefig(chart, bbox_inches="tight")
-                plt.close(chart)
-    
+
+        # AMI utilities: daily temp overlay + daily totals
+        for util, data in ami_data.items():
+            feats = data["features"]
+            unit = data["unit"]
+
+            if df_temp is not None:
+                merged = merge_ami_temp(feats["daily_series"], df_temp)
+                if not merged.empty:
+                    fig = plot_temp_overlay_ami(merged, util + " Daily Usage vs Temperature", unit)
+                    pdf.savefig(fig, bbox_inches="tight")
+                    plt.close(fig)
+
+            # Daily totals bar
+            fig, ax = plt.subplots(figsize=(12, 4))
+            daily = feats["daily_series"]
+            ax.bar(daily.index, daily.values, color="#3498db", alpha=0.8)
+            ax.axhline(feats["daily_avg"], color="#c0392b", linestyle="--", linewidth=2, label="Daily Avg")
+            ax.set_ylabel("Daily " + unit)
+            ax.set_title(util + " - Daily Totals")
+            ax.legend()
+            fig.autofmt_xdate()
+            plt.tight_layout()
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+
+        # Meter utilities: daily avg temp overlay + consumption chart
+        for util, data in meter_data.items():
+            feats = data["features"]
+            unit = feats["unit"]
+            df_div = data["df"]
+
+            if df_temp is not None:
+                merged = merge_meter_temp(df_div, df_temp)
+                if not merged.empty:
+                    fig = plot_meter_daily_avg_temp_overlay(
+                        merged, util + " Daily Avg Usage vs Temperature", unit
+                    )
+                    pdf.savefig(fig, bbox_inches="tight")
+                    plt.close(fig)
+
+            graphs = MeterGraphs(feats, title_prefix=util)
+            fig = graphs.plot_consumption()
+            pdf.savefig(fig, bbox_inches="tight")
+            plt.close(fig)
+
     buffer.seek(0)
     return buffer
 
@@ -1282,8 +1320,7 @@ def main():
     meter_data = {}
     ami_data = {}
     df_temp = None
-    consumption_charts = []
-    temp_overlay_charts = []
+    df_temp_hourly = None
     temp_correlations = {}
     cross_corr_pairs = {}
     utility_features = {}
