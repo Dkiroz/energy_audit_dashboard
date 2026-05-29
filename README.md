@@ -14,7 +14,9 @@ It handles Electric, Water, and Gas in any combination. Tabs appear dynamically 
 
 ## How to Access
 
+
 The app runs in a browser. No installation needed. Open the Streamlit link and upload your files from the sidebar.
+
 ---
 
 ## What to Upload
